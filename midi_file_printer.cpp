@@ -137,6 +137,7 @@ MidiMessage TrackChunk::readSysexEvent(uint8_t command) {
 
 MidiMessage TrackChunk::readMetaEvent(uint8_t command) {
     uint8_t metaCommand = readByte();
+    MidiMessage message = MidiMessage();
     switch (metaCommand) {
         case 0x02:
             if (readByte() == 0) {
@@ -145,7 +146,7 @@ MidiMessage TrackChunk::readMetaEvent(uint8_t command) {
             break;
         case 0x03:
             uint32_t len = MidiFile::parseVariableLengthQuantity(_buffer, _bufferOffset);
-
+            uint8_t *eventBytes = readBytes(len);
     }
 }
 
