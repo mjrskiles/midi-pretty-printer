@@ -62,7 +62,7 @@ void MidiChunk::gobble(FILE *filePtr) {
     _chunkLength |= chunk_length_bytes[2] << 8;
     _chunkLength |= chunk_length_bytes[3] << 0;
 
-    printf("Read %d as length\n", _chunkLength);
+    printf("Read %d as chunk length\n", _chunkLength);
 
     uint8_t *buffer = new uint8_t[_chunkLength];
     fread(buffer, _chunkLength, 1, filePtr);
