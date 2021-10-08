@@ -2,6 +2,10 @@
 // Created by Michael Skiles on 10/6/21.
 //
 
+/*
+ * Based on the midi file spec found at https://midimusic.github.io/tech/midispec.html
+ */
+
 #ifndef MIDI_PRINTER_MIDI_FILE_PRINTER_H
 
 #include <iostream>
@@ -33,8 +37,11 @@ public:
     void gobble(FILE *filePtr);
 protected:
     int _chunkType;
+
+    // The buffer contains a chunk's data, that is, everything EXCEPT the chunk type and length. It should therefore
+    // contain <length> bytes
     uint8_t *_buffer;
-    uint32_t _size;
+    uint32_t _chunkLength = 0;
 };
 
 /*
@@ -49,8 +56,19 @@ public:
     /*
      * Take the byte array and parse it into objects
      */
-    void parse();
+    void processHeader();
 protected:
+    uint16_t _format = 0;
+    uint16_t _numTracks = 0;
+public:
+    uint16_t getFormat() const;
+
+    uint16_t getNumTracks() const;
+
+    uint16_t getDivision() const;
+
+protected:
+    uint16_t _division = 0;
 };
 
 /*
@@ -65,15 +83,25 @@ public:
         _chunkType = CHUNK_TYPE_TRACK;
     }
 
-    void parse();
+    void processTrack();
+    TrackEvent readTrackEvent();
+    MidiMessage readMidiEvent(uint8_t command);
+    MidiMessage readSysexEvent(uint8_t command);
+    MidiMessage readMetaEvent(uint8_t command);
+    uint8_t readByte();
+    uint8_t* readBytes(uint32_t amount);
 protected:
+    TrackEvent *_trackEvents;
+    uint32_t _numTrackEvents;
+    uint32_t _bufferOffset = 0; // This needs to be manually incremented whenever a byte is read out of the buffer!
+    bool _reachedEOT = false;
 };
 
 class MidiFile {
 public:
-    MidiFile(string fileName);
+    MidiFile(const char* fileName);
 
-    static uint32_t parseVariableLengthQuantity(FILE *filePtr);
+    static uint32_t parseVariableLengthQuantity(uint8_t *buffer, uint32_t& offset);
 
     const HeaderChunk &getHeader() const;
 
@@ -86,6 +114,8 @@ public:
     int getNumTracks() const;
 
     void setNumTracks(int numTracks);
+
+    FILE *getFilePtr() const;
 
 protected:
     FILE *_filePtr;
