@@ -27,6 +27,20 @@ void printBuffer(uint8_t *buf, int size) {
     printf("\n");
 }
 
+void MidiMessage::print() {
+    printf("%s %s\n", "Midi Event: ", description.c_str());
+    printf("  Status byte: %x\n", status);
+    printf("  Channel: %d\n", channel);
+    printf("  # of data bytes: %d\n", len);
+    printf("  Data: \n");
+    printBuffer(data, len);
+}
+
+void TrackEvent::print() {
+    printf("Delta Time: %d\n", deltaT);
+    event.print();
+}
+
 void MidiChunk::gobble(FILE *filePtr) {
     uint8_t chunk_type_bytes[4];
     uint8_t *bytes_ptr = chunk_type_bytes;
@@ -53,7 +67,6 @@ void MidiChunk::gobble(FILE *filePtr) {
     uint8_t *buffer = new uint8_t[_chunkLength];
     fread(buffer, _chunkLength, 1, filePtr);
     _buffer = buffer;
-    printBuffer(_buffer, _chunkLength);
 }
 
 const HeaderChunk &MidiFile::getHeader() const {
@@ -71,6 +84,10 @@ void HeaderChunk::processHeader() {
         _division |= _buffer[4] << 8;
         _division |= _buffer[5];
     }
+    printf("Header:\n");
+    printf("  Format: %x\n", _format);
+    printf("  Number of tracks: %d\n", _numTracks);
+    printf("  Division Type: %x\n", _division);
 }
 
 uint16_t HeaderChunk::getFormat() const {
@@ -90,21 +107,35 @@ TrackChunk *MidiFile::getTracks() const {
 }
 
 void TrackChunk::processTrack() {
-
+    printf(">>>> Track <<<<\n");
+    while (_bufferOffset < _chunkLength && !_reachedEOT) {
+        TrackEvent event = readTrackEvent();
+        event.print();
+    }
 }
 
 TrackEvent TrackChunk::readTrackEvent() {
+    // TODO don't forget to handle running status
     uint32_t time = MidiFile::parseVariableLengthQuantity(_buffer, _bufferOffset);
-    uint8_t status = readByte();
-    MidiMessage message;
-    if (status == 0xff) {
-        message = readMetaEvent(status);
-    }
-    if (status == 0xf0) {
-        message = readSysexEvent(status);
+    uint8_t nextByte = readByte();
+    MidiMessage message = MidiMessage();
+    // status words have the leftmost bit set
+    if (nextByte & 128) {
+        uint8_t status = nextByte;
+        _runningStatus = status;
+        if (status == 0xff) {
+            message = readMetaEvent(status);
+        }
+        else if (status == 0xf0) {
+            message = readSysexEvent(status);
+        } else {
+            message = readMidiEvent(status);
+        }
     } else {
-        message = readMidiEvent(status);
+        // It's a data word using running status!
+        message = readMidiEvent(_runningStatus);
     }
+
     TrackEvent trackEvent = TrackEvent();
     trackEvent.deltaT = time;
     trackEvent.event = message;
@@ -128,7 +159,43 @@ meta_key_sig = 0xff_59_02 # sf mi : sharp/flats major/minor -7 = 7 flats, 0 = C,
  */
 
 MidiMessage TrackChunk::readMidiEvent(uint8_t command) {
-    return MidiMessage();
+    uint8_t statusMasked = command & 0xf0;
+    uint8_t channel = command & 0x0f;
+
+    MidiMessage message = MidiMessage();
+    message.status = command;
+    message.channel = channel;
+    uint32_t len = -1;
+    uint8_t *eventBytes = nullptr;
+    string desc = "Not set desc";
+    switch(statusMasked) {
+        case STATUS_NOTE_OFF:
+            eventBytes = readBytes(2);
+            len = 2;
+            desc = "Note Off";
+            break;
+        case STATUS_NOTE_ON:
+            eventBytes = readBytes(2);
+            len = 2;
+            desc = "Note On";
+            break;
+        case STATUS_CONTROL_CHANGE:
+            eventBytes = readBytes(2);
+            len = 2;
+            desc = "Control Change";
+            break;
+        case STATUS_PROGRAM_CHANGE:
+            eventBytes = readBytes(1);
+            len = 1;
+            desc = "Program Change";
+            break;
+        default:
+            break;
+    }
+    message.data = eventBytes;
+    message.description = desc;
+    message.len = len;
+    return message;
 }
 
 MidiMessage TrackChunk::readSysexEvent(uint8_t command) {
@@ -138,16 +205,44 @@ MidiMessage TrackChunk::readSysexEvent(uint8_t command) {
 MidiMessage TrackChunk::readMetaEvent(uint8_t command) {
     uint8_t metaCommand = readByte();
     MidiMessage message = MidiMessage();
+    message.status = 0xff;
+    uint32_t len = 0;
+    uint8_t *eventBytes = nullptr;
+    string desc = "Not set desc meta";
+    uint8_t channel = -1;
     switch (metaCommand) {
-        case 0x02:
+        case 0x2f:
             if (readByte() == 0) {
                 _reachedEOT = true;
+                desc = "End of track";
+                len = 0;
             }
             break;
         case 0x03:
-            uint32_t len = MidiFile::parseVariableLengthQuantity(_buffer, _bufferOffset);
-            uint8_t *eventBytes = readBytes(len);
+            desc = "Meta: Sequence/Track Name";
+            len = MidiFile::parseVariableLengthQuantity(_buffer, _bufferOffset);
+            eventBytes = readBytes(len);
+            break;
+        case 0x51:
+            desc = "Set Tempo";
+            len = readByte(); // This message type has the length in 1 byte and it's always 3
+            eventBytes = readBytes(len);
+            break;
+        case 0x58:
+            desc = "Time Signature";
+            len = readByte(); // This message type has the length in 1 byte and it's always 4
+            eventBytes = readBytes(len);
+            break;
+        case 0x59:
+            desc = "Key Signature";
+            len = readByte(); //length is always 2
+            eventBytes = readBytes(len);
     }
+    message.len = len;
+    message.description = desc;
+    message.data = eventBytes;
+    message.channel = channel;
+    return message;
 }
 
 uint8_t TrackChunk::readByte() {

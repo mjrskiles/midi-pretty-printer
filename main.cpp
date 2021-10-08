@@ -9,11 +9,8 @@ int main() {
     header.gobble(mf.getFilePtr());
     header.processHeader();
     TrackChunk *tracks = new TrackChunk[header.getNumTracks()];
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < header.getNumTracks(); i++) {
         tracks[i].gobble(mf.getFilePtr());
+        tracks[i].processTrack();
     }
-    uint8_t temp[8];
-    fread(temp, 8, 1, mf.getFilePtr());
-    fread(temp, 8, 1, mf.getFilePtr());
-    MidiFile::parseVariableLengthQuantity(temp, 0);
 }

@@ -14,17 +14,26 @@
 #define CHUNK_TYPE_HEADER 0
 #define CHUNK_TYPE_TRACK 1
 
+#define STATUS_NOTE_OFF 0x80
+#define STATUS_NOTE_ON 0x90
+#define STATUS_CONTROL_CHANGE 0xb0
+#define STATUS_PROGRAM_CHANGE 0xc0
+
 using namespace std;
 
 struct MidiMessage {
-    uint8_t status;
-    uint8_t *data;
-    int len;
+    string description = "Description not set";
+    uint8_t status = 0;
+    uint8_t *data = nullptr;
+    uint32_t len = 0;
+    uint8_t channel;
+    void print();
 };
 
 struct TrackEvent {
     uint32_t deltaT;
     MidiMessage event;
+    void print();
 };
 
 class MidiChunk {
@@ -95,6 +104,7 @@ protected:
     uint32_t _numTrackEvents;
     uint32_t _bufferOffset = 0; // This needs to be manually incremented whenever a byte is read out of the buffer!
     bool _reachedEOT = false;
+    uint8_t _runningStatus = 0;
 };
 
 class MidiFile {
